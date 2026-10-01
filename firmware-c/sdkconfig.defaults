@@ -1,0 +1,15 @@
+CONFIG_FREERTOS_HZ=1000
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+CONFIG_ESP_TASK_WDT_EN=n
+CONFIG_LWIP_TCP_MSL=2000
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+
+# La IdeaBoard lleva 2 MB de flash, no los 4 MB que asume la board esp32dev.
+CONFIG_ESPTOOLPY_FLASHSIZE_2MB=y
+
+# imu.c usa el driver I2C clasico (driver/i2c.h), marcado como obsoleto en
+# ESP-IDF 6.0 y previsto para eliminarse en la 7.0. Funciona correctamente y
+# el aviso ensucia cada compilacion, asi que se silencia de forma explicita.
+# Si algun dia se actualiza a ESP-IDF 7, hay que migrar a driver/i2c_master.h.
+CONFIG_I2C_SUPPRESS_DEPRECATE_WARN=y

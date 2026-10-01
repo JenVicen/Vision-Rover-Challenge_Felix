@@ -1,0 +1,12 @@
+# Dependencias gestionadas por el IDF Component Manager.
+#
+# En ESP-IDF <= 5.x, cJSON venia integrado como el componente "json" y bastaba
+# ponerlo en REQUIRES. En ESP-IDF 6.x se saco del arbol y pasa a descargarse
+# desde el registro de componentes. Por eso se declara aqui en vez de en
+# CMakeLists.txt.
+#
+# Al ser "src" el componente principal del proyecto en PlatformIO, el gestor
+# anade esta dependencia automaticamente y #include "cJSON.h" funciona sin
+# tocar REQUIRES.
+dependencies:
+  espressif/cjson: "^1.7.18"

@@ -1,0 +1,24 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "status_led.c"
+        "motors.c"
+        "imu.c"
+        "sensors.c"
+        "vision_client.c"
+        "esp_link.c"
+        "control.c"
+        "planner.c"
+        "mission.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        driver
+        esp_adc
+        esp_wifi
+        esp_netif
+        esp_event
+        esp_timer
+        esp_hw_support
+        nvs_flash
+        lwip
+)

@@ -1,0 +1,25 @@
+# Artefactos de compilacion de PlatformIO / ESP-IDF.
+# Nada de esto es codigo fuente: se regenera con "pio run".
+# Si se subiera al repo serian ~2000 archivos objeto inutiles para otra maquina,
+# porque contienen rutas absolutas de ESTE equipo.
+.pio/
+build/
+
+# Componentes descargados por el gestor de dependencias de ESP-IDF.
+# Se vuelven a bajar solos leyendo src/idf_component.yml.
+managed_components/
+dependencies.lock
+
+# Configuracion generada de ESP-IDF. La fuente de verdad es sdkconfig.defaults,
+# que SI se versiona. Estos archivos derivados cambian en cada build.
+sdkconfig
+sdkconfig.rover10
+sdkconfig.rover11
+sdkconfig.test*
+sdkconfig.old
+
+# Cache de VS Code generada por PlatformIO.
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+.vscode/ipch/
+compile_commands.json
