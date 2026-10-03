@@ -45,17 +45,23 @@ import threading
 import time
 
 try:  # como paquete
-    from .configuracion import CONFIG_POR_DEFECTO, ConfigVision, avisos_config, cargar_config
-    from .detectors.cubos import detectar_cubos
+    from .configuracion import (
+        CONFIG_POR_DEFECTO, ConfigVision, avisos_config, cargar_config, con_exposicion,
+        con_matices,
+    )
+    from .detectors.cubos import (
+        asignar_matices, detectar_cubos, medir_matices, promedio_circular,
+    )
     from .detectors.rovers import detectar_rovers
     from .geometry.coordenadas import (
-        AnclajeCancha, ErrorDuplicado, ErrorGeometria, detectar_marcadores_crudo,
-        filtrar_plausibles, pose_camara, resolver_duplicados,
+        AnclajeCancha, ErrorDuplicado, ErrorGeometria, construir_sistema,
+        detectar_marcadores, detectar_marcadores_crudo, filtrar_plausibles, pose_camara,
+        resolver_duplicados,
     )
     from .geometry.distorsion import (
         ErrorCalibracion, FuenteRectificada, Rectificador, comparar_con_camara, elegir_perfil,
     )
-    from .mundo import VERSION_PROTOCOLO, RelojRonda
+    from .mundo import VERSION_PROTOCOLO, RelojRonda, con_entregas
     from .publish.puerto import ErrorPuerto
     from .publish.telemetria import PublicadorTelemetria
     from .record.acta import escribir_acta, mmss
@@ -67,19 +73,23 @@ try:  # como paquete
     from .sources.generador_sintetico import FuenteSintetica
 except ImportError:  # como script suelto
     from vision.configuracion import (  # type: ignore[no-redef]
-        CONFIG_POR_DEFECTO, ConfigVision, avisos_config, cargar_config,
+        CONFIG_POR_DEFECTO, ConfigVision, avisos_config, cargar_config, con_exposicion,
+        con_matices,
     )
-    from vision.detectors.cubos import detectar_cubos  # type: ignore[no-redef]
+    from vision.detectors.cubos import (  # type: ignore[no-redef]
+        asignar_matices, detectar_cubos, medir_matices, promedio_circular,
+    )
     from vision.detectors.rovers import detectar_rovers  # type: ignore[no-redef]
     from vision.geometry.coordenadas import (  # type: ignore[no-redef]
-        AnclajeCancha, ErrorDuplicado, ErrorGeometria, detectar_marcadores_crudo,
-        filtrar_plausibles, pose_camara, resolver_duplicados,
+        AnclajeCancha, ErrorDuplicado, ErrorGeometria, construir_sistema,
+        detectar_marcadores, detectar_marcadores_crudo, filtrar_plausibles, pose_camara,
+        resolver_duplicados,
     )
     from vision.geometry.distorsion import (  # type: ignore[no-redef]
         ErrorCalibracion, FuenteRectificada, Rectificador, comparar_con_camara, elegir_perfil,
     )
     from vision.mundo import (  # type: ignore[no-redef]
-        VERSION_PROTOCOLO, RelojRonda,
+        VERSION_PROTOCOLO, RelojRonda, con_entregas,
     )
     from vision.publish.puerto import ErrorPuerto  # type: ignore[no-redef]
     from vision.publish.telemetria import PublicadorTelemetria  # type: ignore[no-redef]
@@ -505,6 +515,123 @@ class Arbitro:
         )
 
 
+def preguntar_exposicion(cfg: ConfigVision) -> float | None:
+    """Pregunta con qué exposición arrancar. Devuelve `None` si se deja la del archivo.
+
+    Va junto a las otras dos preguntas del arranque —qué cámara y qué perfil—
+    porque es la tercera cosa que cambia de una sala a otra: la exposición del
+    archivo se midió con una luz, y con más luz quema la imagen y lava el color
+    de los cubos. Enter conserva la del archivo, así que quien no tiene el
+    problema no tiene que saber nada.
+
+    Se pregunta ANTES de abrir la cámara, porque la exposición se fija al
+    abrirla. Y solo si hay alguien para contestar: sin terminal no se pregunta
+    nada y vale la del archivo, o la de `--exposicion`.
+    """
+    actual = cfg.camara.exposicion.valor
+    print("\n  Exposición de la cámara (fija). Más negativo = menos luz.")
+    print("  En el archivo de configuración: {:g}. Si la sala tiene mucha luz o los".format(actual))
+    print("  cubos brillan, probá {:g} o {:g}.".format(actual - 1, actual - 2))
+    while True:
+        try:
+            respuesta = input("  Exposición [Enter = {:g}]: ".format(actual)).strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+        if not respuesta:
+            return None
+        try:
+            return float(respuesta.replace(",", "."))
+        except ValueError:
+            print("  Valor inválido: tiene que ser un número, por ejemplo -7.")
+
+
+def preguntar_calibrar_colores() -> bool:
+    """Pregunta si se calibran los colores de los cubos con la luz de ahora."""
+    print("\n  Colores de los cubos. Si con esta luz algún cubo no se reconoce, el sistema")
+    print("  puede aprender sus colores mirándolos: poné los TRES cubos dentro de la")
+    print("  cancha, separados entre sí y sin el rover encima.")
+    try:
+        respuesta = input("  ¿Calibrar los colores ahora? [s/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return respuesta in ("s", "si", "sí", "y", "yes")
+
+
+#: Cuántos cuadros buenos hacen falta para dar por medida una calibración. No es
+#: un umbral de detección: es para que un solo cuadro raro no decida los colores
+#: de toda la corrida.
+_CUADROS_CALIBRACION = 10
+
+
+def calibrar_colores(fuente, cfg: ConfigVision, matriz, segundos: float = 3.0):
+    """Mira los cubos unos segundos y devuelve la configuración con SUS matices.
+
+    Devuelve `(cfg, se_calibró)`. Si no se pudo —no se ve la cancha, o no hay
+    exactamente un cubo de cada color a la vista— devuelve la configuración
+    **sin tocar** y lo dice: arrancar con los colores del archivo es mejor que
+    arrancar con unos mal aprendidos.
+
+    Vale para esta corrida y no se guarda. La luz de una sala cambia a lo largo
+    del día, y un color aprendido a la mañana y guardado sería, a la tarde, un
+    número viejo con cara de calibración.
+    """
+    colores = list(cfg.elementos.cubos.colores)
+    muestras: dict[str, list[float]] = {c: [] for c in colores}
+    cuadros = sin_geometria = dudosos = 0
+    conteos: dict[int, int] = {}
+    fin = time.monotonic() + segundos
+    while time.monotonic() < fin:
+        cuadro = fuente.leer()
+        if cuadro is None:
+            time.sleep(0.005)
+            continue
+        cuadros += 1
+        try:
+            marcadores = detectar_marcadores(
+                cuadro.imagen, cfg.marcadores_esquina.nombre_diccionario,
+                cfg.deteccion_marcadores.refinamiento_esquinas)
+            sistema = construir_sistema(cuadro.imagen, cfg, marcadores)
+        except ErrorGeometria:
+            sin_geometria += 1
+            continue
+        medidos = medir_matices(cuadro.imagen, sistema, cfg)
+        conteos[len(medidos)] = conteos.get(len(medidos), 0) + 1
+        asignados = asignar_matices(medidos, cfg)
+        if asignados is not None:
+            for color, matiz in asignados.items():
+                muestras[color].append(matiz)
+        elif len(medidos) == len(colores):
+            dudosos += 1  # estaban los tres, pero no se supo cuál es cuál
+
+    buenos = min(len(v) for v in muestras.values())
+    if buenos < _CUADROS_CALIBRACION:
+        print("  ✗ No se calibraron los colores: se siguen usando los del archivo.")
+        if cuadros == 0 or sin_geometria == cuadros:
+            print("    No se vieron los cuatro marcadores de esquina.")
+        elif dudosos > buenos:
+            print("    Se ven los {} cubos, pero con esta luz sus tonos están tan corridos "
+                  "que no se puede saber cuál es cuál.".format(len(colores)))
+            print("    Bajá la exposición o quitá la luz directa, y volvé a intentar.")
+        else:
+            visto = max(conteos, key=conteos.get) if conteos else 0
+            print("    Hacen falta exactamente {} manchas de color con tamaño de cubo y se "
+                  "vieron {}.".format(len(colores), visto))
+            print("    Revisá que estén los {} cubos dentro de la cancha, separados, y que "
+                  "no haya otra cosa de color.".format(len(colores)))
+        return cfg, False
+
+    nuevos = {c: promedio_circular(muestras[c]) for c in colores}
+    antes = cfg.deteccion_cubos.matices_grados
+    print("  ✓ Colores calibrados con esta luz ({} cuadros):".format(buenos))
+    for c in colores:
+        corrimiento = (nuevos[c] - antes[c] + 180.0) % 360.0 - 180.0
+        print("      {:<6} matiz {:>5.1f}°  (el del archivo era {:>5.1f}°, {:+.0f}°)".format(
+            c, nuevos[c], antes[c], corrimiento))
+    return con_matices(cfg, nuevos), True
+
+
 def abrir_fuente(cfg: ConfigVision, args):
     """Devuelve `(fuente, descripción)`. Cámara por defecto; sintético si se pide.
 
@@ -524,6 +651,20 @@ def abrir_fuente(cfg: ConfigVision, args):
         camara.cerrar()
         raise ErrorCamara("la cámara no entregó imágenes")
     alto, ancho = primero.imagen.shape[:2]
+
+    if getattr(args, "exposicion", None) is not None:
+        # Pedir un valor no es lo mismo que tenerlo: hay cámaras y sistemas que
+        # dicen que sí y lo ignoran. Se muestra lo que la cámara contestó.
+        informe = next((i for i in camara.informes if i.nombre == "exposición"), None)
+        if informe is None:
+            print("  ⚠ Exposición pedida: {:g}, pero la cámara no informó nada.".format(
+                args.exposicion))
+        else:
+            print("  Exposición pedida: {:g} → {} (la cámara "
+                  "quedó en {:g})".format(args.exposicion, informe.veredicto, informe.despues))
+            if informe.veredicto != "ACEPTADO":
+                print("  ⚠ La cámara NO tomó ese valor. En macOS es lo esperable: no deja "
+                      "tocar la exposición por esta vía. La prueba que vale es en Windows.")
 
     perfil = elegir_perfil(cfg.calibracion, BASE_VISION, ancho, alto,
                            nombre=args.camara, interactivo=sys.stdin.isatty())
@@ -674,6 +815,14 @@ def main(argv: list[str] | None = None) -> int:
                              "preparación produce una ronda que parece válida y no lo es")
     parser.add_argument("--duracion", type=float, default=0.0,
                         help="segundos a correr; 0 = hasta 'quit' o Ctrl-C")
+    parser.add_argument("--exposicion", type=float, default=None,
+                        help="exposición FIJA de la cámara para esta corrida, en lugar de "
+                             "la del archivo de configuración. Más negativo = menos luz: "
+                             "con -6 en el archivo, probar -7 o -8 si la sala es muy "
+                             "luminosa. No la vuelve automática")
+    parser.add_argument("--calibrar-colores", action="store_true",
+                        help="aprender los colores de los cubos mirándolos, con la luz de "
+                             "ahora, sin preguntar. Tienen que estar los tres en la cancha")
     parser.add_argument("--ventana", action="store_true",
                         help="abrir la vista en vivo: la imagen con lo detectado encima")
     parser.add_argument("--ventana-hz", type=float, default=12.0,
@@ -681,6 +830,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     cfg = cargar_config(args.config)
+    if args.exposicion is None and not args.sintetico and sys.stdin and sys.stdin.isatty():
+        # Sin `--exposicion` y con alguien delante, se pregunta. El valor queda en
+        # `args` para que el resto del arranque lo trate igual que al de la opción.
+        args.exposicion = preguntar_exposicion(cfg)
+    if args.exposicion is not None:
+        if args.sintetico:
+            print("[aviso] --exposicion no tiene efecto con --sintetico: no hay cámara.")
+        cfg = con_exposicion(cfg, args.exposicion)
     try:
         fuente, descripcion, perfil_info = abrir_fuente(cfg, args)
     except (ErrorCamara, ErrorCalibracion) as exc:
@@ -690,6 +847,15 @@ def main(argv: list[str] | None = None) -> int:
     matriz = getattr(fuente, "matriz_camara", None)
     if matriz is None:  # fuente sintética: la matriz es la de su propia cámara
         matriz = fuente.verdad.camara.matriz
+
+    # Los colores se calibran ACÁ, con la cámara ya abierta y antes de armar
+    # nada más: todo lo que viene después recibe la configuración ya corregida.
+    colores_calibrados = False
+    quiere_calibrar = args.calibrar_colores or (
+        not args.sintetico and sys.stdin and sys.stdin.isatty()
+        and preguntar_calibrar_colores())
+    if quiere_calibrar:
+        cfg, colores_calibrados = calibrar_colores(fuente, cfg, matriz)
 
     # `--fase READY` ya no entra en READY de una: preparar una ronda exige ver la
     # cancha, y al construir el árbitro todavía no hubo un solo cuadro. Queda
@@ -718,6 +884,14 @@ def main(argv: list[str] | None = None) -> int:
     print("=" * 70)
     print("SISTEMA DE VISIÓN — Vision-Rover-Challenge · protocolo v{}".format(VERSION_PROTOCOLO))
     print("Entrada: {}".format(descripcion))
+    if not args.sintetico:
+        print("Exposición: {:g} ({})".format(
+            cfg.camara.exposicion.valor,
+            "elegida al arrancar" if args.exposicion is not None
+            else "la del archivo de configuración"))
+    print("Colores de los cubos: {}".format(
+        "calibrados al arrancar, con esta luz" if colores_calibrados
+        else "los del archivo de configuración"))
     if args.sintetico:
         print("")
         print("  ##################################################################")
@@ -778,12 +952,11 @@ def main(argv: list[str] | None = None) -> int:
                 sistema_actual, estado = procesar(
                     cuadro, cfg, matriz, fase_ahora, reloj_ahora, seguidor, anclaje,
                     descartados, duplicados, rechazos, admision, demorados)
-                publicador.actualizar(estado)
-                ultimo_estado = estado
-                # El conteo va DESPUÉS de publicar y en su propio try: es para
-                # la pantalla, no para el contrato, así que un error suyo no
-                # puede frenar la telemetría ni tumbar la ronda. Si falla, se
-                # conserva la última cuenta buena, igual que todo lo demás.
+                # El conteo va ANTES de publicar desde el protocolo v3: el
+                # veredicto de cada cubo viaja en el mensaje (`in_depot`). Sigue
+                # en su propio try, porque un error suyo no puede frenar la
+                # telemetría ni tumbar la ronda: si falla, se publica igual, con
+                # el veredicto de la última cuenta buena.
                 try:
                     acopio = contador.actualizar(estado, estado.ts_ms)
                     # El contador informa; el árbitro decide. Se le pasa el
@@ -796,6 +969,14 @@ def main(argv: list[str] | None = None) -> int:
                         print("[fase] " + aviso_reto, flush=True)
                 except Exception as exc:  # noqa: BLE001 — a propósito
                     ultimo_error = "acopio: {}: {}".format(type(exc).__name__, exc)
+                # Lo que se publica es el veredicto SOSTENIDO —`contado`— y no el
+                # instantáneo: un cubo en el límite entra y sale con el temblor
+                # de la detección, y eso le haría al rover soltar y volver a
+                # buscar el mismo cubo.
+                estado = con_entregas(estado, frozenset(
+                    z.color for z in acopio.zonas if z.contado) if acopio else frozenset())
+                publicador.actualizar(estado)
+                ultimo_estado = estado
             except ErrorDuplicado as exc:
                 # Un duplicado que NO se pudo resolver. Se descarta el cuadro y
                 # el falla-abierto conserva el último estado bueno: entre dos

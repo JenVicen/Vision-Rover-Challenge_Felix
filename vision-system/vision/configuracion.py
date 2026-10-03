@@ -13,9 +13,10 @@ en vez de barrer el diccionario.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import cv2
@@ -325,9 +326,14 @@ class ConteoAcopio:
 
     No está para tapar detecciones malas: de eso ya se ocupa el seguimiento,
     que con una detección no confiable conserva la última posición buena.
+
+    `tolerancia_mm` es cuánto agranda el ÁRBITRO, por cada lado, la ventana donde
+    tiene que caer el centro del cubo. Es su holgura frente al error de
+    ubicación, y no viaja en el mensaje: lo que viaja es el veredicto.
     """
 
     permanencia_minima_ms: int
+    tolerancia_mm: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -421,6 +427,10 @@ class DeteccionCubos:
     """
 
     croma_minimo: float
+    croma_piso: float
+    croma_factor_tablero: float
+    margen_cancha_celdas: float
+    nivel_recorte: int
     matices_grados: dict[str, float]
     matiz_tolerancia_grados: float
     area_minima_relativa: float
@@ -845,7 +855,8 @@ def cargar_config(ruta: str = CONFIG_POR_DEFECTO) -> ConfigVision:
     )
 
     conteo_acopio = ConteoAcopio(
-        permanencia_minima_ms=int(d["conteo_acopio"]["permanencia_minima_ms"])
+        permanencia_minima_ms=int(d["conteo_acopio"]["permanencia_minima_ms"]),
+        tolerancia_mm=float(d["conteo_acopio"]["tolerancia_mm"]),
     )
 
     ronda = Ronda(
@@ -869,6 +880,10 @@ def cargar_config(ruta: str = CONFIG_POR_DEFECTO) -> ConfigVision:
     dc = d["deteccion_cubos"]
     deteccion_cubos = DeteccionCubos(
         croma_minimo=float(dc["croma_minimo"]),
+        croma_piso=float(dc["croma_piso"]),
+        croma_factor_tablero=float(dc["croma_factor_tablero"]),
+        margen_cancha_celdas=float(dc["margen_cancha_celdas"]),
+        nivel_recorte=int(dc["nivel_recorte"]),
         matices_grados={k: float(v) for k, v in dc["matices_lab_grados"].items()},
         matiz_tolerancia_grados=float(dc["matiz_tolerancia_grados"]),
         area_minima_relativa=float(dc["area_minima_relativa"]),
@@ -990,6 +1005,26 @@ def geometrias_deposito(cfg: ConfigVision) -> dict[str, schema.GeometriaDepot]:
     centro está a igual distancia de dos bordes. `revisar_config` lo convierte en
     un error de configuración con nombre y apellido.
     """
+    return _geometrias(cfg, tolerancia_celdas=0.0)
+
+
+def geometrias_arbitro(cfg: ConfigVision) -> dict[str, schema.GeometriaDepot]:
+    """Las zonas como las juzga el ÁRBITRO: con su tolerancia ya aplicada.
+
+    Es la misma geometría de `geometrias_deposito`, con la ventana de aceptación
+    agrandada `conteo_acopio.tolerancia_mm` por cada lado. La usan el contador
+    de acopio —que decide— y la vista —que tiene que dibujar la ventana con la
+    que se decide, no otra—.
+
+    Las dos funciones conviven a propósito. La de arriba es la geometría
+    conservadora, la que garantiza que el cubo entra entero con cualquier
+    rotación, y contra ella se revisa la configuración. Esta es la que cuenta.
+    """
+    return _geometrias(
+        cfg, tolerancia_celdas=cfg.conteo_acopio.tolerancia_mm / cfg.tablero.cell_mm)
+
+
+def _geometrias(cfg: ConfigVision, tolerancia_celdas: float) -> dict[str, schema.GeometriaDepot]:
     cell_mm = cfg.tablero.cell_mm
     tam = cfg.lugares.tamano_deposito
     return {
@@ -1001,6 +1036,7 @@ def geometrias_deposito(cfg: ConfigVision) -> dict[str, schema.GeometriaDepot]:
             cols=cfg.tablero.cols,
             rows=cfg.tablero.rows,
             cube_side=cfg.elementos.cubos.lado_mm / cell_mm,
+            tolerance=tolerancia_celdas,
         )
         for dep in cfg.lugares.depositos
     }
@@ -1113,6 +1149,13 @@ def _revisar_zonas(cfg: ConfigVision) -> str | None:
 
     if cfg.conteo_acopio.permanencia_minima_ms < 0:
         return "conteo_acopio.permanencia_minima_ms no puede ser negativo"
+    media_diagonal_mm = cfg.elementos.cubos.lado_mm * math.sqrt(2.0) / 2.0
+    if not (0.0 <= cfg.conteo_acopio.tolerancia_mm < media_diagonal_mm):
+        return (
+            "conteo_acopio.tolerancia_mm debe estar entre 0 y la media diagonal del cubo "
+            "({:.1f} mm): es la holgura del árbitro sobre el margen conservador, no un "
+            "reemplazo de ese margen".format(media_diagonal_mm)
+        )
     if cfg.ronda.preparacion_ms <= 0:
         return (
             "ronda.preparacion_ms tiene que ser > 0: es lo que dura READY, y en cero "
@@ -1142,6 +1185,39 @@ def _revisar_zonas(cfg: ConfigVision) -> str | None:
                 cfg.ronda.duracion_ms, cfg.conteo_acopio.permanencia_minima_ms)
         )
     return None
+
+
+def con_exposicion(cfg: ConfigVision, valor: float) -> ConfigVision:
+    """Devuelve la configuración con OTRA exposición de cámara, sin tocar el archivo.
+
+    Es lo que usa `--exposicion` al arrancar. La exposición declarada en el JSON
+    se midió con una luz; en otra sala, con más luz, el mismo número quema la
+    imagen y lava el color de los cubos. Poder pisarla desde la línea de comandos
+    deja probar valores en la cancha sin editar un archivo versionado, que es
+    como un número de una sala termina commiteado para todas.
+
+    La exposición sigue siendo **fija**: esto elige *cuál* valor fijo, no la pasa
+    a automático. Por eso fuerza `fijar` en verdadero aunque el archivo dijera
+    otra cosa. La configuración es inmutable, así que se devuelve una nueva.
+    """
+    exposicion = replace(cfg.camara.exposicion, fijar=True, valor=float(valor))
+    return replace(cfg, camara=replace(cfg.camara, exposicion=exposicion))
+
+
+def con_matices(cfg: ConfigVision, matices: dict[str, float]) -> ConfigVision:
+    """Devuelve la configuración con OTROS matices de referencia para los cubos.
+
+    Es lo que usa la calibración de colores del arranque. Los matices del archivo
+    son los de los colores puros; los de un cubo real, con la luz de una sala
+    concreta, quedan corridos. Medirlos sobre los cubos mismos y usarlos para esa
+    corrida es más simple y más seguro que ensanchar tolerancias a mano.
+
+    Solo se pisan los colores que vengan en `matices`. El amarillo —la clase de
+    exclusión— no se toca: nadie pone un cubo amarillo para calibrarlo.
+    """
+    nuevos = dict(cfg.deteccion_cubos.matices_grados)
+    nuevos.update({color: float(m) % 360.0 for color, m in matices.items()})
+    return replace(cfg, deteccion_cubos=replace(cfg.deteccion_cubos, matices_grados=nuevos))
 
 
 def avisos_config(cfg: ConfigVision) -> list[str]:
@@ -1372,6 +1448,15 @@ def revisar_config(cfg: ConfigVision) -> str | None:
         return "deteccion_cubos.recorte_robusto debe estar en (0, 1]"
     if dc_cfg.croma_minimo <= 0:
         return "deteccion_cubos.croma_minimo debe ser > 0"
+    if not (0.0 < dc_cfg.croma_piso <= dc_cfg.croma_minimo):
+        return ("deteccion_cubos.croma_piso debe estar en (0, croma_minimo]: es el piso "
+                "del umbral adaptativo y croma_minimo es su techo")
+    if dc_cfg.croma_factor_tablero <= 0:
+        return "deteccion_cubos.croma_factor_tablero debe ser > 0"
+    if dc_cfg.margen_cancha_celdas < 0:
+        return "deteccion_cubos.margen_cancha_celdas no puede ser negativo"
+    if not (1 <= dc_cfg.nivel_recorte <= 255):
+        return "deteccion_cubos.nivel_recorte debe estar entre 1 y 255"
     colores_dibujo = set(cfg.sintetico.colores_cubo_bgr)
     faltan_colores = sorted(set(cfg.elementos.cubos.colores) - colores_dibujo)
     if faltan_colores:
