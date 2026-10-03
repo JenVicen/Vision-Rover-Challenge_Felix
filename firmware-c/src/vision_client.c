@@ -288,10 +288,12 @@ static bool parse_message(const char *line, world_t *out)
     memset(out, 0, sizeof(*out));
 
     out->protocol_version = json_int(root, "v", 0);
-    if (out->protocol_version != 2)
+    if (out->protocol_version != 3)
     {
         /* El contrato indica rechazar versiones desconocidas en lugar de
-         * interpretar campos que podrian haber cambiado de significado. */
+         * interpretar campos que podrian haber cambiado de significado.
+         * v3 (commit 5fffa8e): agrega el campo in_depot por cubo (veredicto
+         * sostenido del arbitro). Es aditivo; solo hubo que subir este check. */
         ESP_LOGW(TAG, "version de protocolo no soportada: %d", out->protocol_version);
         cJSON_Delete(root);
         return false;
