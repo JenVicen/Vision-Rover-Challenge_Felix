@@ -105,6 +105,9 @@
 #define HEADING_MAX_CORR 0.35f
 
 #define TURN_KP 0.0090f
+/* Amortiguacion del giro en sitio: se opone a la velocidad angular medida por
+ * el giroscopio para frenar antes de pasarse del objetivo (0 = sin freno). */
+#define TURN_KD 0.0015f
 /* Bajado 0.20 -> 0.15 (prueba 5, 4-oct-2026): con 0.20 el giro en sitio se
  * pasaba del objetivo y oscilaba sin asentarse en algunos rumbos. */
 #define TURN_MIN_SPEED 0.15f
@@ -112,6 +115,13 @@
 /* Subido 6 -> 10 (prueba 5, 4-oct-2026): ventana de llegada mas tolerante para
  * que el giro en sitio asiente; al avanzar el rumbo se recorrige igual. */
 #define TURN_TOLERANCE_DEG 10.0f /* error angular aceptable al terminar */
+/* El giro solo se da por bueno si, ademas de estar dentro de la tolerancia, la
+ * velocidad angular es menor que esto: evita declarar "listo" a media inercia
+ * y pasarse de largo (criterio del codigo base de la organizacion, 15 dps). */
+#define TURN_SETTLED_DPS 20.0f
+/* Salvaguarda: tras este tiempo dentro de la ventana se acepta aunque el rate
+ * no baje del umbral. Impide que un giroscopio ruidoso deje el giro atascado. */
+#define TURN_SETTLE_MS 200
 
 #define DRIVE_SPEED 0.45f    /* crucero */
 #define PUSH_SPEED 0.38f     /* empujando un cubo */

@@ -5,11 +5,24 @@
 #include "imu.h"
 #include "motors.h"
 
+#include "esp_timer.h"
+
 static bool s_turning_in_place = false;
+
+/* Momento (ms) en que el rumbo entro en la ventana de tolerancia; 0 si todavia
+ * esta fuera. Sirve para exigir que el giro se ASIENTE antes de darlo por bueno
+ * (ver control_face_heading). */
+static int64_t s_in_tolerance_since_ms = 0;
+
+static int64_t now_ms(void)
+{
+    return esp_timer_get_time() / 1000;
+}
 
 void control_reset(void)
 {
     s_turning_in_place = false;
+    s_in_tolerance_since_ms = 0;
 }
 
 /*
@@ -33,21 +46,56 @@ static float heading_correction(float error_deg)
 bool control_face_heading(const rover_obs_t *me, float target_theta)
 {
     const float error = wrap180(target_theta - me->theta);
+    const float rate_dps = imu_gyro_z_dps();
 
+    /* Llegada CONFIRMADA. No basta con estar dentro de la ventana: hay que
+     * estarlo sin seguir girando, o la inercia nos lleva de largo y el giro
+     * oscila (entra, se pasa, vuelve a entrar). Replica el criterio del codigo
+     * base de la organizacion: error pequeno Y velocidad angular baja.
+     *
+     * Como salvaguarda para no quedar nunca atascados si el giroscopio tuviera
+     * ruido o sesgo residual, tambien aceptamos tras permanecer TURN_SETTLE_MS
+     * dentro de la ventana aunque el rate no haya bajado del umbral. Asi el
+     * criterio solo puede RETRASAR un poco la llegada, nunca impedirla. */
     if (fabsf(error) <= TURN_TOLERANCE_DEG)
     {
-        motors_stop();
-        s_turning_in_place = false;
-        return true;
+        if (s_in_tolerance_since_ms == 0)
+        {
+            s_in_tolerance_since_ms = now_ms();
+        }
+
+        const bool settled = fabsf(rate_dps) <= TURN_SETTLED_DPS;
+        const bool dwelled = (now_ms() - s_in_tolerance_since_ms) >= TURN_SETTLE_MS;
+
+        if (settled || dwelled)
+        {
+            motors_stop();
+            s_turning_in_place = false;
+            s_in_tolerance_since_ms = 0;
+            return true;
+        }
+        /* Dentro de la ventana pero todavia girando: seguimos, el lazo de abajo
+         * reduce la velocidad al bajar el error y el robot frena hasta asentar. */
+    }
+    else
+    {
+        /* Nos salimos de la ventana (sobreimpulso): reiniciar el cronometro. */
+        s_in_tolerance_since_ms = 0;
     }
 
     /* Velocidad proporcional al error, con un minimo para vencer la friccion
-     * estatica y un maximo para no pasarse de largo. */
+     * estatica y un maximo para no pasarse de largo. El termino derivativo se
+     * opone a la velocidad angular actual para amortiguar el sobreimpulso. */
     float speed = TURN_KP * fabsf(error);
     speed = clampf(speed, TURN_MIN_SPEED, TURN_MAX_SPEED);
 
     const float direction = (error > 0.0f) ? 1.0f : -1.0f;
-    const float signed_speed = speed * direction * TURN_CCW_SIGN;
+    float signed_speed = speed * direction * TURN_CCW_SIGN;
+
+    /* Amortiguacion: restar una fraccion de la velocidad angular medida frena
+     * el giro cuando ya estamos rotando rapido hacia el objetivo. */
+    signed_speed -= (TURN_KD * rate_dps) * TURN_CCW_SIGN;
+    signed_speed = clampf(signed_speed, -TURN_MAX_SPEED, TURN_MAX_SPEED);
 
     /* Giro sobre el propio eje: ruedas en sentidos opuestos. */
     motors_set(-signed_speed, signed_speed);
