@@ -83,8 +83,10 @@
 
 /* Signo del giro. Si con TURN_CCW_SIGN = +1 el rover gira al reves de lo
  * que dice la vision (theta disminuye cuando deberia aumentar), poner -1.
- * Se verifica con la prueba de giro del README. */
-#define TURN_CCW_SIGN (+1)
+ * Se verifica con la prueba de giro del README.
+ * VERIFICADO prueba 5 (4-oct-2026): con +1 giraba sin sentido/sin parar en
+ * cancha (ambos rovers). Con -1 asienta en los rumbos objetivo. */
+#define TURN_CCW_SIGN (-1)
 
 /* Minimo throttle que realmente mueve al robot (zona muerta del puente H).
  * Por debajo de esto los motores zumban pero no giran.
@@ -103,9 +105,13 @@
 #define HEADING_MAX_CORR 0.35f
 
 #define TURN_KP 0.0090f
-#define TURN_MIN_SPEED 0.20f
+/* Bajado 0.20 -> 0.15 (prueba 5, 4-oct-2026): con 0.20 el giro en sitio se
+ * pasaba del objetivo y oscilaba sin asentarse en algunos rumbos. */
+#define TURN_MIN_SPEED 0.15f
 #define TURN_MAX_SPEED 0.45f
-#define TURN_TOLERANCE_DEG 6.0f /* error angular aceptable al terminar */
+/* Subido 6 -> 10 (prueba 5, 4-oct-2026): ventana de llegada mas tolerante para
+ * que el giro en sitio asiente; al avanzar el rumbo se recorrige igual. */
+#define TURN_TOLERANCE_DEG 10.0f /* error angular aceptable al terminar */
 
 #define DRIVE_SPEED 0.45f    /* crucero */
 #define PUSH_SPEED 0.38f     /* empujando un cubo */
