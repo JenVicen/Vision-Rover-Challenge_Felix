@@ -27,7 +27,7 @@
  * Se obtiene del log de arranque del otro rover ("MAC propia: ...").
  * Rellenar AMBOS, y compilar cada env con su pareja correcta. */
 #define PEER_MAC_ROVER_10 {0x70, 0x4B, 0xCA, 0x5E, 0xBC, 0x10}
-#define PEER_MAC_ROVER_11 {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02}
+#define PEER_MAC_ROVER_11 {0x70, 0x4B, 0xCA, 0x5E, 0xBC, 0x7C}
 
 /* ===================================================================
  * 2. RED
@@ -40,7 +40,7 @@
 #define WIFI_PASSWORD "2704012168"
 
 /* IP de la computadora que corre el sistema oficial de vision. */
-#define VISION_HOST "192.168.1.143"
+#define VISION_HOST "192.168.1.219"
 
 /* Puerto del contrato oficial (schema.py: DEFAULT_PORT = 2026). */
 #define VISION_PORT 2026
@@ -64,15 +64,22 @@
  * MOTOR_RIGHT_GAIN: salida del motor 2 multiplicada por este factor para
  * compensar la diferencia mecanica entre lados. Se obtiene con la prueba
  * de linea recta descrita en el README (equivale a motor_calibration.py).
+ * Rover 11 medido con desvio positivo: bajar ~0.03 para compensar exceso del
+ * motor derecho.
  */
-#define MOTOR_RIGHT_GAIN 1.00f
+#define MOTOR_RIGHT_GAIN 0.97f
 
 /* Invertir el sentido de un motor si quedo cableado al reves.
- * Alternativa fisica: intercambiar los cables 1-2 o 3-4 (ver conexiones/). */
+ * Las inversiones se calibran por rover porque el cableado puede variar. */
+#if ROVER_ID == 10
 #define MOTOR_LEFT_INVERT 0
-/* Verificado en la prueba 1 (rover 10): el motor derecho giraba al reves en
- * los cinco pasos. Se corrige por firmware en vez de recablear. */
 #define MOTOR_RIGHT_INVERT 1
+#elif ROVER_ID == 11
+#define MOTOR_LEFT_INVERT 1
+#define MOTOR_RIGHT_INVERT 1
+#else
+#error "ROVER_ID debe ser 10 o 11"
+#endif
 
 /* Signo del giro. Si con TURN_CCW_SIGN = +1 el rover gira al reves de lo
  * que dice la vision (theta disminuye cuando deberia aumentar), poner -1.

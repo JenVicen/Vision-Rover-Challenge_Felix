@@ -352,6 +352,9 @@ cd C:\cenfobot
 pio run -e test1_motores -t upload -t monitor
 ```
 
+Para probar el rover 11, usar `test1_motores_rover11`; los perfiles sin sufijo
+son para el rover 10.
+
 La primera vez tarda **varios minutos** (compila ESP-IDF entero). Las
 siguientes son más rápidas.
 
@@ -385,6 +388,8 @@ cd C:\cenfobot
 ```powershell
 pio run -e test2_recta -t upload -t monitor
 ```
+
+Para el rover 11, usar `test2_recta_rover11`.
 
 El rover avanza 2 segundos y reporta:
 

@@ -115,6 +115,9 @@ Para cada prueba:
 pio run -e test1_motores -t upload -t monitor
 ```
 
+Para el rover 11, usar `test1_motores_rover11` (los perfiles sin sufijo son
+para el rover 10).
+
 (o desde VS Code: barra inferior de PlatformIO → elegir el entorno → Upload).
 
 ### 5.1 — Prueba 1: sentido de los motores
@@ -166,6 +169,8 @@ MAC contraria automáticamente.
 ```powershell
 pio run -e test2_recta -t upload -t monitor
 ```
+
+Para el rover 11, usar `test2_recta_rover11`.
 
 **En el suelo, con 1 m libre por delante.** El robot avanza 2 s y reporta
 cuánto se desvió:
