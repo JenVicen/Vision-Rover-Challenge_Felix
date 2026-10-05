@@ -33,7 +33,7 @@ import numpy as np
 
 try:  # como paquete
     from ..configuracion import cargar_config
-    from ..geometry.coordenadas import centro_de, detectar_marcadores
+    from ..geometry.coordenadas import ErrorDuplicado, centro_de, detectar_marcadores
     from ..sources.camara import (
         ErrorCamara,
         FuenteCamara,
@@ -44,7 +44,9 @@ try:  # como paquete
     from .panel import AMBAR, GRIS, ROJO, VERDE, Panel, Tipografia, escala_para
 except ImportError:  # como script suelto
     from vision.configuracion import cargar_config  # type: ignore[no-redef]
-    from vision.geometry.coordenadas import centro_de, detectar_marcadores  # type: ignore[no-redef]
+    from vision.geometry.coordenadas import (  # type: ignore[no-redef]
+        ErrorDuplicado, centro_de, detectar_marcadores,
+    )
     from vision.sources.camara import (  # type: ignore[no-redef]
         ErrorCamara,
         FuenteCamara,
@@ -295,9 +297,13 @@ def main(argv: list[str] | None = None) -> int:
                         return 2
                     continue
 
-                detectados = detectar_marcadores(
-                    cuadro.imagen, cfg.marcadores_esquina.nombre_diccionario,
-                    cfg.deteccion_marcadores.refinamiento_esquinas)
+                try:
+                    detectados = detectar_marcadores(
+                        cuadro.imagen, cfg.marcadores_esquina.nombre_diccionario,
+                        cfg.deteccion_marcadores.refinamiento_esquinas)
+                except ErrorDuplicado as exc:
+                    print("\n  Detección ambigua: {}".format(exc))
+                    break
                 encontrados = sorted(set(detectados) & set(esperados))
                 completo = len(encontrados) == len(esperados)
 

@@ -1,0 +1,43 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+**/.venv/
+**/venv/
+**/env/
+
+# Python bytecode and caches
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Build artifacts and local tool output
+build/
+dist/
+out/
+.pio/
+**/.pio/
+*.elf
+*.hex
+*.bin
+*.uf2
+*.out
+*.a
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+
+# IDE and OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local environment / secrets
+.env
+.env.*
+*.log
