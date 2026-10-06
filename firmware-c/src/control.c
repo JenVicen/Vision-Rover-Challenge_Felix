@@ -5,24 +5,11 @@
 #include "imu.h"
 #include "motors.h"
 
-#include "esp_timer.h"
-
 static bool s_turning_in_place = false;
-
-/* Momento (ms) en que el rumbo entro en la ventana de tolerancia; 0 si todavia
- * esta fuera. Sirve para exigir que el giro se ASIENTE antes de darlo por bueno
- * (ver control_face_heading). */
-static int64_t s_in_tolerance_since_ms = 0;
-
-static int64_t now_ms(void)
-{
-    return esp_timer_get_time() / 1000;
-}
 
 void control_reset(void)
 {
     s_turning_in_place = false;
-    s_in_tolerance_since_ms = 0;
 }
 
 /*
@@ -48,39 +35,13 @@ bool control_face_heading(const rover_obs_t *me, float target_theta)
     const float error = wrap180(target_theta - me->theta);
     const float rate_dps = imu_gyro_z_dps();
 
-    /* Llegada CONFIRMADA. No basta con estar dentro de la ventana: hay que
-     * estarlo sin seguir girando, o la inercia nos lleva de largo y el giro
-     * oscila (entra, se pasa, vuelve a entrar). Replica el criterio del codigo
-     * base de la organizacion: error pequeno Y velocidad angular baja.
-     *
-     * Como salvaguarda para no quedar nunca atascados si el giroscopio tuviera
-     * ruido o sesgo residual, tambien aceptamos tras permanecer TURN_SETTLE_MS
-     * dentro de la ventana aunque el rate no haya bajado del umbral. Asi el
-     * criterio solo puede RETRASAR un poco la llegada, nunca impedirla. */
-    if (fabsf(error) <= TURN_TOLERANCE_DEG)
+    /* El giro termina con error angular y velocidad angular dentro de rango. */
+    if (fabsf(error) <= TURN_TOLERANCE_DEG &&
+        fabsf(rate_dps) <= TURN_SETTLED_DPS)
     {
-        if (s_in_tolerance_since_ms == 0)
-        {
-            s_in_tolerance_since_ms = now_ms();
-        }
-
-        const bool settled = fabsf(rate_dps) <= TURN_SETTLED_DPS;
-        const bool dwelled = (now_ms() - s_in_tolerance_since_ms) >= TURN_SETTLE_MS;
-
-        if (settled || dwelled)
-        {
-            motors_stop();
-            s_turning_in_place = false;
-            s_in_tolerance_since_ms = 0;
-            return true;
-        }
-        /* Dentro de la ventana pero todavia girando: seguimos, el lazo de abajo
-         * reduce la velocidad al bajar el error y el robot frena hasta asentar. */
-    }
-    else
-    {
-        /* Nos salimos de la ventana (sobreimpulso): reiniciar el cronometro. */
-        s_in_tolerance_since_ms = 0;
+        motors_stop();
+        s_turning_in_place = false;
+        return true;
     }
 
     /* Velocidad proporcional al error, con un minimo para vencer la friccion
@@ -105,16 +66,14 @@ bool control_face_heading(const rover_obs_t *me, float target_theta)
 }
 
 static bool drive_common(const rover_obs_t *me, float col, float row,
-                         float arrive_tolerance, float speed, bool brake_on_arrival)
+                         float arrive_tolerance, float speed,
+                         float approach_speed, float slowdown_radius)
 {
     const float distance = dist_cells(me->col, me->row, col, row);
 
     if (distance <= arrive_tolerance)
     {
-        if (brake_on_arrival)
-        {
-            motors_stop();
-        }
+        motors_stop();
         s_turning_in_place = false;
         return true;
     }
@@ -139,10 +98,10 @@ static bool drive_common(const rover_obs_t *me, float col, float row,
 
     /* Frenado progresivo en la aproximacion final. */
     float base = speed;
-    if (distance < SLOWDOWN_RADIUS_CELLS)
+    if (distance < slowdown_radius)
     {
-        const float ratio = distance / SLOWDOWN_RADIUS_CELLS;
-        base = APPROACH_SPEED + (speed - APPROACH_SPEED) * ratio;
+        const float ratio = distance / slowdown_radius;
+        base = approach_speed + (speed - approach_speed) * ratio;
     }
 
     const float correction = heading_correction(error);
@@ -154,11 +113,13 @@ static bool drive_common(const rover_obs_t *me, float col, float row,
 bool control_drive_to(const rover_obs_t *me, float col, float row,
                       float arrive_tolerance, float speed)
 {
-    return drive_common(me, col, row, arrive_tolerance, speed, true);
+    return drive_common(me, col, row, arrive_tolerance, speed,
+                        APPROACH_SPEED, SLOWDOWN_RADIUS_CELLS);
 }
 
-bool control_push_through(const rover_obs_t *me, float col, float row,
-                          float arrive_tolerance, float speed)
+bool control_push_to(const rover_obs_t *me, float col, float row,
+                     float arrive_tolerance, float speed)
 {
-    return drive_common(me, col, row, arrive_tolerance, speed, false);
+    return drive_common(me, col, row, arrive_tolerance, speed,
+                        PUSH_APPROACH_SPEED, PUSH_SLOWDOWN_RADIUS_CELLS);
 }

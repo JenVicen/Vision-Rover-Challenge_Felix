@@ -1,9 +1,9 @@
 /*
  * mission.h - Logica autonoma de la ronda.
  *
- * TODA la decision ocurre aqui, dentro del rover: seleccion de cubo, reparto
- * de trabajo con el otro rover, planificacion del empuje y verificacion de la
- * entrega. Ninguna computadora externa participa (reglamento, secciones 4 y 6).
+ * Ejecuta el plan local, coordina el paso entre rovers y verifica entregas.
+ * Las decisiones se calculan dentro del rover; la computadora externa solo
+ * publica telemetria.
  */
 #ifndef MISSION_H
 #define MISSION_H

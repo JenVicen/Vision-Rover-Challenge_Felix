@@ -9,12 +9,8 @@
 #include "freertos/task.h"
 
 /*
- * WS2812 por bit-banging con el contador de ciclos de CPU.
- *
- * Se eligio bit-banging en lugar del driver RMT porque la API de RMT cambio
- * entre versiones de ESP-IDF; esto compila igual en todas y el LED solo se
- * actualiza en cambios de estado, asi que el tiempo con interrupciones
- * deshabilitadas es despreciable.
+ * WS2812 por bit-banging con el contador de ciclos de CPU. El LED solo se
+ * actualiza en transiciones de estado.
  *
  * Tiempos WS2812B: bit 0 -> 0.35us alto, 0.9us bajo
  *                  bit 1 -> 0.70us alto, 0.6us bajo

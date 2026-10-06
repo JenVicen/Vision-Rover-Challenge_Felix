@@ -1,6 +1,6 @@
 /*
  * world.h - Modelo del mundo, calcado del contrato oficial de vision
- *           (vision-system/contrato/CONTRATO.md, protocolo v = 2).
+ *           (vision-system/contrato/CONTRATO.md, protocolo v3).
  *
  * Todas las posiciones estan en CELDAS (1 celda = grid.cell_mm = 20 mm).
  * col crece a la derecha, row crece hacia abajo.
@@ -52,6 +52,7 @@ typedef struct
     float col;
     float row;
     uint32_t age_ms;
+    bool in_depot; /* veredicto sostenido del arbitro (contrato v3) */
     bool present;
 } cube_obs_t;
 

@@ -69,28 +69,22 @@
  */
 #define MOTOR_RIGHT_GAIN 0.97f
 
-/* Invertir el sentido de un motor si quedo cableado al reves.
- * Las inversiones se calibran por rover porque el cableado puede variar. */
+/* Calibracion independiente por rover: inversion electrica de cada motor y
+ * signo geometrico del giro antihorario. */
 #if ROVER_ID == 10
 #define MOTOR_LEFT_INVERT 0
 #define MOTOR_RIGHT_INVERT 1
+#define TURN_CCW_SIGN (+1)
 #elif ROVER_ID == 11
 #define MOTOR_LEFT_INVERT 1
 #define MOTOR_RIGHT_INVERT 1
+#define TURN_CCW_SIGN (+1)
 #else
 #error "ROVER_ID debe ser 10 o 11"
 #endif
 
-/* Signo del giro. Si con TURN_CCW_SIGN = +1 el rover gira al reves de lo
- * que dice la vision (theta disminuye cuando deberia aumentar), poner -1.
- * Se verifica con la prueba de giro del README.
- * VERIFICADO prueba 5 (4-oct-2026): con +1 giraba sin sentido/sin parar en
- * cancha (ambos rovers). Con -1 asienta en los rumbos objetivo. */
-#define TURN_CCW_SIGN (-1)
-
 /* Minimo throttle que realmente mueve al robot (zona muerta del puente H).
- * Por debajo de esto los motores zumban pero no giran.
- * Reduced to 0.05 for battery weight pressing wheels (tested Sep 20). */
+ * Por debajo de este valor los motores no vencen la friccion estatica. */
 #define MOTOR_DEADBAND 0.05f
 
 /* ===================================================================
@@ -108,26 +102,22 @@
 /* Amortiguacion del giro en sitio: se opone a la velocidad angular medida por
  * el giroscopio para frenar antes de pasarse del objetivo (0 = sin freno). */
 #define TURN_KD 0.0015f
-/* Bajado 0.20 -> 0.15 (prueba 5, 4-oct-2026): con 0.20 el giro en sitio se
- * pasaba del objetivo y oscilaba sin asentarse en algunos rumbos. */
-#define TURN_MIN_SPEED 0.15f
-#define TURN_MAX_SPEED 0.45f
-/* Subido 6 -> 10 (prueba 5, 4-oct-2026): ventana de llegada mas tolerante para
- * que el giro en sitio asiente; al avanzar el rumbo se recorrige igual. */
+#define TURN_MIN_SPEED 0.12f
+#define TURN_MAX_SPEED 0.30f
 #define TURN_TOLERANCE_DEG 10.0f /* error angular aceptable al terminar */
 /* El giro solo se da por bueno si, ademas de estar dentro de la tolerancia, la
  * velocidad angular es menor que esto: evita declarar "listo" a media inercia
  * y pasarse de largo (criterio del codigo base de la organizacion, 15 dps). */
-#define TURN_SETTLED_DPS 20.0f
-/* Salvaguarda: tras este tiempo dentro de la ventana se acepta aunque el rate
- * no baje del umbral. Impide que un giroscopio ruidoso deje el giro atascado. */
-#define TURN_SETTLE_MS 200
+#define TURN_SETTLED_DPS 10.0f
 
-#define DRIVE_SPEED 0.45f    /* crucero */
-#define PUSH_SPEED 0.38f     /* empujando un cubo */
-#define APPROACH_SPEED 0.30f /* ultimos centimetros */
+#define DRIVE_SPEED 0.40f         /* crucero */
+#define PUSH_SPEED 0.38f          /* empujando un cubo */
+#define APPROACH_SPEED 0.12f      /* aproximacion sin freno activo */
+#define PUSH_APPROACH_SPEED 0.15f /* minimo con par suficiente bajo carga */
 #define ARRIVE_TOLERANCE_CELLS 1.8f
-#define SLOWDOWN_RADIUS_CELLS 6.0f
+#define PUSH_ARRIVE_TOLERANCE_CELLS 0.6f
+#define SLOWDOWN_RADIUS_CELLS 15.0f
+#define PUSH_SLOWDOWN_RADIUS_CELLS 12.0f
 
 /* Si el error de rumbo supera esto, se gira en sitio antes de avanzar. */
 #define REALIGN_THRESHOLD_DEG 35.0f
@@ -138,12 +128,21 @@
  * Para empujar un cubo hacia su deposito, el rover se coloca en un punto
  * "detras" del cubo sobre la recta cubo->deposito, y luego avanza.
  */
-#define STAGE_DISTANCE_CELLS 6.0f /* cuan atras del cubo se posiciona */
-#define CUBE_CAPTURED_CELLS 4.0f  /* distancia a la que se considera en contacto */
-
-/* Un cubo se da por entregado cuando esta completamente dentro del deposito.
- * Margen conservador: media diagonal del cubo (cube_side * sqrt(2) / 2). */
-#define DELIVERY_MARGIN_CELLS 0.3f
+#define STAGE_DISTANCE_CELLS 8.0f /* separacion para girar sin tocar el cubo */
+#define STAGE_ARRIVE_TOLERANCE_CELLS 1.0f
+#define CUBE_CAPTURED_CELLS 4.0f /* distancia a la que se considera en contacto */
+#define ALIGN_CUBE_MOVE_CELLS 1.0f
+#define ALIGN_ENTRY_SETTLE_MS 1000
+#define PUSH_LATERAL_MAX_CELLS 2.0f
+#define PUSH_BEHIND_MIN_CELLS 0.5f
+#define PUSH_ENTRY_SETTLE_MS 500
+/* Compensacion por rueda libre: el objetivo del rover queda antes del centro
+ * del deposito y la entrega se confirma con el veredicto de vision. */
+#define PUSH_STOP_BEFORE_DEPOT_CELLS 2.5f
+#define PUSH_CUBE_STALE_STOP_MS 1000
+/* in_depot exige 1 s continuo dentro. El rover espera quieto un poco mas para
+ * recibir ese veredicto, en vez de seguir empujando durante la permanencia. */
+#define VERIFY_SETTLE_MS 1300
 
 /* ===================================================================
  * 7. SEGURIDAD Y TIEMPOS
@@ -152,12 +151,18 @@
 /* Si la telemetria es mas vieja que esto, el rover se detiene. */
 #define TELEMETRY_TIMEOUT_MS 700
 
-/* Si la observacion de un objeto es mas vieja que esto, no se confia en ella
- * para decidir (contrato: campo age_ms). */
-#define OBSERVATION_STALE_MS 1200
+/* Tolera interrupciones breves de deteccion sin producir avance a tirones,
+ * pero se detiene antes del timeout general de telemetria. */
+#define OBSERVATION_STALE_MS 500
 
 /* Distancia a la que se considera que el otro rover estorba. */
 #define PEER_AVOID_CELLS 12.0f
+#define YIELD_MOVE_CELLS 8.0f
+#define YIELD_SPEED 0.20f
+#define YIELD_ARRIVE_TOLERANCE_CELLS 1.5f
+
+/* Separacion para aplicar prioridad por ID durante el empuje propio. */
+#define PUSH_CROSS_AVOID_CELLS 8.0f /* separacion para ceder antes del contacto */
 
 /* Distancia ultrasonica que dispara frenado de emergencia. */
 #define ULTRA_EMERGENCY_CM 7.0f
@@ -166,8 +171,12 @@
 #define MISSION_PERIOD_MS 20 /* 50 Hz */
 #define LINK_PERIOD_MS 150
 
-/* Tiempo maximo persiguiendo una misma tarea antes de reintentar. */
-#define TASK_TIMEOUT_MS 25000
+/* Tiempo maximo de ejecucion continua antes de replanificar. */
+#define TASK_TIMEOUT_MS 60000
+#define EDGE_RETRY_MS 10000
+#define EDGE_RETRY_MOVE_CELLS 1.0f
+#define TASK_RETRY_BASE_MS 15000
+#define TASK_RETRY_MAX_MS 60000
 
 /* ===================================================================
  * 8. MODELO DE COSTE DEL PLANIFICADOR
@@ -207,7 +216,7 @@
 /* Replanificamos continuamente, pero solo CAMBIAMOS de objetivo si el plan
  * nuevo mejora al actual por mas de este margen. Sin esta histeresis el
  * rover oscilaria entre dos cubos casi equivalentes y no avanzaria ninguno. */
-#define REPLAN_HYSTERESIS_S 2.0f
+#define REPLAN_HYSTERESIS_S 5.0f
 
 /* Una vez que estamos empujando, no soltamos el cubo por un plan mejor:
  * el trabajo ya invertido se perderia. Solo se abandona por fallo real. */

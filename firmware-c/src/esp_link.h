@@ -1,14 +1,8 @@
 /*
  * esp_link.h - Enlace directo entre los dos rovers por ESP-NOW.
  *
- * Sirve para repartir el trabajo sin que ninguna computadora externa
- * intervenga (reglamento, secciones 6 y 7).
- *
- * Reglas de reparto implementadas:
- *   - Cada rover anuncia que color esta atendiendo y su distancia al cubo.
- *   - Si ambos reclaman el mismo color, gana el que esta mas cerca.
- *   - A igualdad de distancia, gana el ID menor (desempate deterministico:
- *     los dos rovers llegan a la misma conclusion sin negociar).
+ * Publica el objetivo, la pose y el estado de empuje. La mision usa estos
+ * datos para resolver reclamos simultaneos y prioridades de paso.
  *
  * ESP-NOW comparte la radio con el Wi-Fi: el peer se registra con channel = 0
  * para que use el canal en el que ya esta la estacion. Por eso hay que

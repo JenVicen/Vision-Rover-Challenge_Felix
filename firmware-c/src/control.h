@@ -31,10 +31,10 @@ bool control_face_heading(const rover_obs_t *me, float target_theta);
 bool control_drive_to(const rover_obs_t *me, float col, float row,
                       float arrive_tolerance, float speed);
 
-/* Igual que control_drive_to pero sin frenar al llegar: se usa al empujar,
- * donde detenerse encima del cubo lo dejaria corto. */
-bool control_push_through(const rover_obs_t *me, float col, float row,
-                          float arrive_tolerance, float speed);
+/* Empuja con aproximacion lenta y frena al llegar al objetivo preciso del
+ * centro del rover calculado por la mision. */
+bool control_push_to(const rover_obs_t *me, float col, float row,
+                     float arrive_tolerance, float speed);
 
 /* Reinicia el estado interno del controlador (al cambiar de objetivo). */
 void control_reset(void);

@@ -140,35 +140,14 @@ const depot_t *world_find_depot(const world_t *w, cube_color_t color)
 
 bool world_cube_delivered(const world_t *w, const cube_obs_t *cube)
 {
+    (void)w;
     if (cube == NULL || !cube->present)
     {
         return false;
     }
 
-    const depot_t *depot = world_find_depot(w, cube->color);
-    if (depot == NULL)
-    {
-        return false;
-    }
-
-    /* Criterio conservador del contrato: el cubo cuenta como dentro solo si
-     * su media diagonal cabe dentro del rectangulo del deposito, sea cual sea
-     * su orientacion (la orientacion final del cubo no importa). */
-    const float cube_half_diag = (w->cube_side * 1.41421356f) * 0.5f;
-    const float margin = cube_half_diag + DELIVERY_MARGIN_CELLS;
-
-    const float half_len = w->depot_length * 0.5f;
-    const float half_depth = w->depot_depth * 0.5f;
-
-    const float dc = fabsf(cube->col - depot->col);
-    const float dr = fabsf(cube->row - depot->row);
-
-    /* No sabemos a que borde esta pegado cada deposito, asi que aceptamos
-     * cualquiera de las dos orientaciones del rectangulo. */
-    const bool fits_wide = (dc + margin <= half_len) && (dr + margin <= half_depth);
-    const bool fits_tall = (dc + margin <= half_depth) && (dr + margin <= half_len);
-
-    return fits_wide || fits_tall;
+    /* in_depot es el veredicto oficial sostenido del contrato v3. */
+    return cube->in_depot;
 }
 
 /* =====================================================================
@@ -277,6 +256,12 @@ static const char *json_string(const cJSON *obj, const char *key)
     return cJSON_IsString(item) ? item->valuestring : NULL;
 }
 
+static bool json_bool(const cJSON *obj, const char *key, bool fallback)
+{
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
+    return cJSON_IsBool(item) ? cJSON_IsTrue(item) : fallback;
+}
+
 static bool parse_message(const char *line, world_t *out)
 {
     cJSON *root = cJSON_Parse(line);
@@ -290,10 +275,8 @@ static bool parse_message(const char *line, world_t *out)
     out->protocol_version = json_int(root, "v", 0);
     if (out->protocol_version != 3)
     {
-        /* El contrato indica rechazar versiones desconocidas en lugar de
-         * interpretar campos que podrian haber cambiado de significado.
-         * v3 (commit 5fffa8e): agrega el campo in_depot por cubo (veredicto
-         * sostenido del arbitro). Es aditivo; solo hubo que subir este check. */
+        /* Las versiones desconocidas se rechazan para no interpretar campos
+         * con semantica incompatible. */
         ESP_LOGW(TAG, "version de protocolo no soportada: %d", out->protocol_version);
         cJSON_Delete(root);
         return false;
@@ -345,6 +328,7 @@ static bool parse_message(const char *line, world_t *out)
         c->col = json_float(item, "col", 0.0f);
         c->row = json_float(item, "row", 0.0f);
         c->age_ms = (uint32_t)json_int(item, "age_ms", 0);
+        c->in_depot = json_bool(item, "in_depot", false);
         c->present = (c->color != COLOR_NONE);
     }
 

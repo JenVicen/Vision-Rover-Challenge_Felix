@@ -1,49 +1,37 @@
-<img src="VisionRover.png" alt="Robot del proyecto" width="900">
+# Equipo Felix — Vision Rover Challenge
 
-# Vision Rover Challenge
+Implementación del equipo **Felix** para el Vision Rover Challenge.
 
-> Inscripción: [sigue este enlace](https://forms.zohopublic.com/pbrenes/form/InscripcionVisionRoverChallenge/formperma/BrlIhyGlHkP2rMzfnJAPL9yKeysvfrFuE6lz2AbGCzs)
+## Integrantes
 
-<p align="center">
-  <a href="https://youtu.be/0UH3G01p_Bw">
-    <img src="https://img.youtube.com/vi/0UH3G01p_Bw/maxresdefault.jpg" width="600">
-  </a>
-  <br>
-  <a href="https://youtu.be/0UH3G01p_Bw"><b>▶ Ver video en YouTube</b></a>
-</p>
+- Jennifer Vicentes Valle
+- Alejandro Espinoza Morales
 
+## Solución
 
-Este repositorio está en continuo desarrollo.
+El sistema utiliza una cámara cenital para publicar el estado de la cancha y dos CenfoBots que toman decisiones de forma autónoma. Cada rover ejecuta en su ESP32 la planificación de tareas, navegación, coordinación entre pares y verificación de entregas.
 
-El **Vision Rover Challenge** es un reto de robótica colaborativa basado en visión por computadora global.
+Componentes principales:
 
-Dos rovers deben comunicarse y coordinar sus movimientos para localizar y transportar objetos dentro de una superficie de trabajo. Una cámara instalada sobre el área genera un mapa preciso del entorno y proporciona en tiempo real la posición de los rovers, los objetos y los puntos de destino.
+- sistema de visión y contrato de telemetría en `vision-system/`;
+- firmware ESP-IDF en `firmware-c/`;
+- comunicación TCP para recibir el estado global;
+- comunicación ESP-NOW entre los dos rovers;
+- asignación exacta de cubos para minimizar el tiempo del último rover;
+- control de rumbo con orientación de cámara y amortiguamiento giroscópico;
+- verificación oficial de entrega mediante `in_depot` del protocolo v3.
 
-El desafío consiste en construir la infraestructura de software necesaria para:
+## Documentación
 
-* Recibir y procesar la información del sistema de visión global.
-* Determinar la posición y orientación de cada rover.
-* Identificar la ubicación de los objetos cúbicos y sus destinos.
-* Planificar rutas y coordinar las acciones de ambos rovers.
-* Transmitir comandos de movimiento a los robots.
-* Evitar colisiones y completar las tareas de manera eficiente.
+| Documento | Contenido |
+|---|---|
+| [Guía de competencia](firmware-c/GUIA_COMPETENCIA.md) | Compilación, carga, puertos COM y lista de verificación para la ronda. |
+| [Especificación técnica](firmware-c/ESPECIFICACION_TECNICA.md) | Arquitectura, planificación, control, coordinación y seguridad. |
+| [Firmware](firmware-c/README.md) | Estructura del firmware y comandos básicos. |
+| [Instalación en Windows](firmware-c/SETUP_NUEVA_PC.md) | Preparación de una computadora de desarrollo. |
+| [Sistema de visión](vision-system/README.md) | Operación y configuración del publicador de telemetría. |
+| [Contrato de telemetría](vision-system/contrato/CONTRATO.md) | Esquema NDJSON consumido por los rovers. |
 
-El objetivo es que los rovers encuentren los objetos, los transporten y los coloquen en puntos específicos del espacio.
+## Estado de la entrega
 
-**¡El equipo que complete el reto con mayor rapidez, precisión y eficiencia será el ganador!**
-
-
-## Contenidos:
-
-- [¿Qué es el reto?](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/blob/main/el_reto.md)
-- [Especificaciones del Robot](https://github.com/Universidad-Cenfotec/Vision-Robotic-Challenge/blob/main/robot.md)
-- [Reglamento del VIsion Rover Challenge](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/blob/main/reglamento.md)
-- [Formato del torneo y clasificación](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/blob/main/torneo.md)
-- [Armado del Robot](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/tree/main/armado)
-- [Conexiones](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/blob/main/conexiones/README.md)
-- [Programación del CenfoBot](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/blob/main/programacion/README.md)
-- [Códigos en python de movimientos, sensores, control etc, del rover](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/blob/main/codigos/README.md)
-- [Sistema de visión](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/tree/main/vision-system)
-- [Archivos de fabricación](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/tree/main/archivos_fabricacion)
-- [Una Idea de Solución](https://github.com/Universidad-Cenfotec/Vision-Rover-Challenge/blob/main/solucion_simple.md)
-- [Generador de posición inicial de cubos](https://universidad-cenfotec.github.io/Vision-Rover-Challenge/)
+Los entornos normales `rover10` y `rover11` compilan con PlatformIO y ESP-IDF. Antes de competir se debe ejecutar la validación física completa descrita en la guía de competencia y cargar nuevamente los dos entornos normales después de cualquier prueba de diagnóstico.

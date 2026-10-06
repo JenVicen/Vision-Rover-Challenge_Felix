@@ -58,7 +58,7 @@ static void selftest_motors(void)
         {"ATRAS", -0.50f, -0.50f},
         {"SOLO MOTOR 1 (izquierdo)", 0.50f, 0.00f},
         {"SOLO MOTOR 2 (derecho)", 0.00f, 0.50f},
-        {"GIRO EN EL SITIO", 0.60f, -0.60f}, // Subido a 0.60 para girar bajo carga
+        {"GIRO EN EL SITIO", 0.60f, -0.60f},
     };
 
     for (int i = 0; i < 5; ++i)
@@ -185,7 +185,7 @@ static void selftest_turn(void)
         }
 
         const rover_obs_t *me = world_find_rover(&w, ROVER_ID);
-        if (me == NULL)
+        if (me == NULL || me->age_ms > OBSERVATION_STALE_MS)
         {
             motors_stop();
             vTaskDelay(pdMS_TO_TICKS(50));

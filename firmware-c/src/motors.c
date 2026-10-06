@@ -6,10 +6,7 @@
 
 #include "driver/ledc.h"
 
-/* 50 Hz es la frecuencia que usa el driver original de la IdeaBoard
- * (codigos/ideaboard.py: pwmio.PWMOut(..., frequency=50)). El puente H de la
- * placa no conmuta bien a frecuencias altas: a 20 kHz las ruedas giran pero
- * sin par util, y el robot no se mueve en el suelo. */
+/* Frecuencia verificada para conservar par util en el puente H de IdeaBoard. */
 #define PWM_FREQ_HZ 50
 #define PWM_RES LEDC_TIMER_10_BIT
 #define PWM_MAX_DUTY 1023
@@ -116,6 +113,8 @@ void motors_set(float left, float right)
 
 void motors_stop(void)
 {
+    /* El frenado activo puede energizar una rueda en esta IdeaBoard. La parada
+     * segura mantiene en cero las cuatro entradas del puente H. */
     write_duty(CH_M1_A, 0);
     write_duty(CH_M1_B, 0);
     write_duty(CH_M2_A, 0);

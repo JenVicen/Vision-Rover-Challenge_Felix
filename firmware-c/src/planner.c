@@ -13,12 +13,8 @@ static const char *TAG = "planner";
 /* --------------------------------------------------------------------
  * Modelo de coste
  * --------------------------------------------------------------------
- * Convertimos geometria en SEGUNDOS, porque el objetivo del reto es tiempo.
- * El modelo es deliberadamente simple: velocidad de crucero constante,
- * velocidad de empuje constante, y un cargo por cada grado que hay que girar.
- * Un modelo mas fino no serviria de nada -- la incertidumbre real del mundo
- * (patinaje, cubos que se desvian) es mayor que el error del modelo, y el
- * plan se recalcula 50 veces por segundo de todos modos.
+ * La geometria se convierte a segundos con velocidades nominales de avance,
+ * empuje y giro, mas un tiempo fijo de servicio.
  * -------------------------------------------------------------------- */
 
 static float travel_time_s(float from_col, float from_row, float from_theta,
@@ -135,15 +131,11 @@ static float sequence_cost(const world_t *w, const rover_obs_t *start,
  *   - un orden dentro de A
  *   - un orden dentro de B
  *
- * Generamos todas las permutaciones de los n cubos pendientes y, para cada
- * permutacion, todos los puntos de corte... no: eso repite trabajo. En su
- * lugar recorremos las 2^n mascaras y, para cada una, permutamos cada lado.
- * Con n <= 4 el total cabe holgadamente en el presupuesto de 20 ms por ciclo.
+ * Se recorren las 2^n asignaciones y las permutaciones de cada rover. Con el
+ * limite de cubos del contrato, la enumeracion cabe en el periodo de mision.
  * -------------------------------------------------------------------- */
 
-/* Permutaciones en orden lexicografico por indice (algoritmo de Heap iterativo
- * seria mas rapido, pero necesitamos DETERMINISMO exacto entre los dos rovers,
- * asi que usamos un generador simple y totalmente reproducible). */
+/* Permutaciones lexicograficas para obtener el mismo resultado en ambos rovers. */
 static bool next_permutation_int(int *a, int n)
 {
     if (n < 2)
